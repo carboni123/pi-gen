@@ -25,18 +25,18 @@ This is a customized pi-gen fork that builds a minimal, secure Raspberry Pi OS i
 Requires Debian-based system with pi-gen dependencies.
 
 ```bash
-# Install dependencies
+# Install dependencies (run as root)
 apt install coreutils quilt parted qemu-user-static debootstrap zerofree zip \
 dosfstools e2fsprogs libarchive-tools libcap2-bin grep rsync xz-utils file git curl bc \
 gpg pigz xxd arch-test bmap-tools kmod
 
-# Build the image
+# Build the minimal image (run as root)
 ./build.sh
-# or for Docker
-./build-docker.sh
 ```
 
 Output: `deploy/raspios-minimal-*.img.xz`
+
+**Note**: The build script has been simplified for this minimal setup and only builds the essential stages (stage0→stage1→stage2→export).
 
 ## Configuration
 Edit `config` for settings like SSH enablement, user credentials, etc.

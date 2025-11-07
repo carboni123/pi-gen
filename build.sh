@@ -1,5 +1,8 @@
 #!/bin/bash -e
 
+# Simplified build script for minimal Raspberry Pi OS image
+# Builds: stage0 → stage1 → stage2 → export-image
+
 # shellcheck disable=SC2119
 run_sub_stage()
 {
@@ -13,7 +16,6 @@ debconf-set-selections <<SELEOF
 $(cat "${i}-debconf")
 SELEOF
 EOF
-
 			log "End ${SUB_STAGE_DIR}/${i}-debconf"
 		fi
 		if [ -f "${i}-packages-nr" ]; then
@@ -81,7 +83,6 @@ EOF
 	log "End ${SUB_STAGE_DIR}"
 }
 
-
 run_stage(){
 	log "Begin ${STAGE_DIR}"
 	STAGE="$(basename "${STAGE_DIR}")"
@@ -93,11 +94,6 @@ run_stage(){
 
 	unmount "${WORK_DIR}/${STAGE}"
 
-	if [ ! -f SKIP_IMAGES ]; then
-		if [ -f "${STAGE_DIR}/EXPORT_IMAGE" ]; then
-			EXPORT_DIRS="${EXPORT_DIRS} ${STAGE_DIR}"
-		fi
-	fi
 	if [ ! -f SKIP ]; then
 		if [ "${CLEAN}" = "1" ]; then
 			if [ -d "${ROOTFS_DIR}" ]; then
@@ -156,7 +152,6 @@ fi
 export BASE_DIR
 
 if [ -f config ]; then
-	# shellcheck disable=SC1091
 	source config
 fi
 
@@ -165,7 +160,6 @@ do
 	case "$flag" in
 		c)
 			EXTRA_CONFIG="$OPTARG"
-			# shellcheck disable=SC1090
 			source "$EXTRA_CONFIG"
 			;;
 		*)
@@ -173,32 +167,20 @@ do
 	esac
 done
 
-export PI_GEN=${PI_GEN:-pi-gen}
-export PI_GEN_REPO=${PI_GEN_REPO:-https://github.com/RPi-Distro/pi-gen}
-export PI_GEN_RELEASE=${PI_GEN_RELEASE:-Raspberry Pi reference}
-
+# Minimal environment setup
 export ARCH=arm64
-export RELEASE=${RELEASE:-trixie} # Don't forget to update stage0/prerun.sh
-export IMG_NAME="${IMG_NAME:-raspios-$RELEASE-$ARCH}"
+export RELEASE=${RELEASE:-trixie}
+export IMG_NAME="${IMG_NAME:-raspios-minimal}"
 
 export USE_QEMU="${USE_QEMU:-0}"
 export IMG_DATE="${IMG_DATE:-"$(date +%Y-%m-%d)"}"
 export IMG_FILENAME="${IMG_FILENAME:-"${IMG_DATE}-${IMG_NAME}"}"
-export ARCHIVE_FILENAME="${ARCHIVE_FILENAME:-"image_${IMG_DATE}-${IMG_NAME}"}"
 
 export SCRIPT_DIR="${BASE_DIR}/scripts"
 export WORK_DIR="${WORK_DIR:-"${BASE_DIR}/work/${IMG_NAME}"}"
 export DEPLOY_DIR=${DEPLOY_DIR:-"${BASE_DIR}/deploy"}
 
-# DEPLOY_ZIP was deprecated in favor of DEPLOY_COMPRESSION
-# This preserve the old behavior with DEPLOY_ZIP=0 where no archive was created
-if [ -z "${DEPLOY_COMPRESSION}" ] && [ "${DEPLOY_ZIP:-1}" = "0" ]; then
-	echo "DEPLOY_ZIP has been deprecated in favor of DEPLOY_COMPRESSION"
-	echo "Similar behavior to DEPLOY_ZIP=0 can be obtained with DEPLOY_COMPRESSION=none"
-	echo "Please update your config file"
-	DEPLOY_COMPRESSION=none
-fi
-export DEPLOY_COMPRESSION=${DEPLOY_COMPRESSION:-zip}
+export DEPLOY_COMPRESSION=${DEPLOY_COMPRESSION:-xz}
 export COMPRESSION_LEVEL=${COMPRESSION_LEVEL:-6}
 export LOG_FILE="${WORK_DIR}/build.log"
 
@@ -206,25 +188,17 @@ export TARGET_HOSTNAME=${TARGET_HOSTNAME:-raspberrypi}
 
 export FIRST_USER_NAME=${FIRST_USER_NAME:-pi}
 export FIRST_USER_PASS
-export DISABLE_FIRST_BOOT_USER_RENAME=${DISABLE_FIRST_BOOT_USER_RENAME:-0}
+export DISABLE_FIRST_BOOT_USER_RENAME=${DISABLE_FIRST_BOOT_USER_RENAME:-1}
 export WPA_COUNTRY
-export ENABLE_SSH="${ENABLE_SSH:-0}"
-export PUBKEY_ONLY_SSH="${PUBKEY_ONLY_SSH:-0}"
+export ENABLE_SSH="${ENABLE_SSH:-1}"
 
 export LOCALE_DEFAULT="${LOCALE_DEFAULT:-en_GB.UTF-8}"
-
 export KEYBOARD_KEYMAP="${KEYBOARD_KEYMAP:-gb}"
 export KEYBOARD_LAYOUT="${KEYBOARD_LAYOUT:-English (UK)}"
-
 export TIMEZONE_DEFAULT="${TIMEZONE_DEFAULT:-Europe/London}"
-
-export GIT_HASH=${GIT_HASH:-"$(git rev-parse HEAD)"}
-
-export PUBKEY_SSH_FIRST_USER
 
 export CLEAN
 export APT_PROXY
-export TEMP_REPO
 
 export STAGE
 export STAGE_DIR
@@ -233,9 +207,6 @@ export PREV_STAGE
 export PREV_STAGE_DIR
 export ROOTFS_DIR
 export PREV_ROOTFS_DIR
-export IMG_SUFFIX
-export NOOBS_NAME
-export NOOBS_DESCRIPTION
 export EXPORT_DIR
 export EXPORT_ROOTFS_DIR
 
@@ -244,12 +215,8 @@ export QUILT_NO_DIFF_INDEX=1
 export QUILT_NO_DIFF_TIMESTAMPS=1
 export QUILT_REFRESH_ARGS="-p ab"
 
-export ENABLE_CLOUD_INIT=${ENABLE_CLOUD_INIT:-1}
-
 # shellcheck source=scripts/common
 source "${SCRIPT_DIR}/common"
-# shellcheck source=scripts/dependencies_check
-source "${SCRIPT_DIR}/dependencies_check"
 
 if [ "$SETFCAP" != "1" ]; then
 	export CAPSH_ARG="--drop=cap_setfcap"
@@ -258,31 +225,7 @@ fi
 mkdir -p "${WORK_DIR}"
 trap term EXIT INT TERM
 
-dependencies_check "${BASE_DIR}/depends"
-
-
-PAGESIZE=$(getconf PAGESIZE)
-if [ "$ARCH" == "armhf" ] && [ "$PAGESIZE" != "4096" ]; then
-	echo
-	echo "ERROR: Building an $ARCH image requires a kernel with a 4k page size (current: $PAGESIZE)"
-	echo "On Raspberry Pi OS (64-bit), you can switch to a suitable kernel by adding the following to /boot/firmware/config.txt and rebooting:"
-	echo
-	echo "kernel=kernel8.img"
-	echo "initramfs initramfs8 followkernel"
-	echo
-	exit 1
-fi
-
-echo "Checking native $ARCH executable support..."
-if ! arch-test -n "$ARCH"; then
-	echo "WARNING: Only a native build environment is supported. Checking emulated support..."
-	if ! arch-test "$ARCH"; then
-		echo "No fallback mechanism found. Ensure your OS has binfmt_misc support enabled and configured."
-		exit 1
-	fi
-fi
-
-#check username is valid
+# Basic checks
 if [[ ! "$FIRST_USER_NAME" =~ ^[a-z][-a-z0-9_]*$ ]]; then
 	echo "Invalid FIRST_USER_NAME: $FIRST_USER_NAME"
 	exit 1
@@ -290,69 +233,23 @@ fi
 
 if [[ "$DISABLE_FIRST_BOOT_USER_RENAME" == "1" ]] && [ -z "${FIRST_USER_PASS}" ]; then
 	echo "To disable user rename on first boot, FIRST_USER_PASS needs to be set"
-	echo "Not setting FIRST_USER_PASS makes your system vulnerable and open to cyberattacks"
-	exit 1
-fi
-
-if [[ "$DISABLE_FIRST_BOOT_USER_RENAME" == "1" ]]; then
-	echo "User rename on the first boot is disabled"
-	echo "Be advised of the security risks linked to shipping a device with default username/password set."
-fi
-
-if [[ -n "${APT_PROXY}" ]] && ! curl --silent "${APT_PROXY}" >/dev/null ; then
-	echo "Could not reach APT_PROXY server: ${APT_PROXY}"
-	exit 1
-fi
-
-if [[ -n "${WPA_PASSWORD}" && ${#WPA_PASSWORD} -lt 8 || ${#WPA_PASSWORD} -gt 63  ]] ; then
-	echo "WPA_PASSWORD" must be between 8 and 63 characters
-	exit 1
-fi
-
-if [[ "${PUBKEY_ONLY_SSH}" = "1" && -z "${PUBKEY_SSH_FIRST_USER}" ]]; then
-	echo "Must set 'PUBKEY_SSH_FIRST_USER' to a valid SSH public key if using PUBKEY_ONLY_SSH"
 	exit 1
 fi
 
 log "Begin ${BASE_DIR}"
 
-STAGE_LIST=${STAGE_LIST:-${BASE_DIR}/stage*}
-export STAGE_LIST
-
-EXPORT_CONFIG_DIR=$(realpath "${EXPORT_CONFIG_DIR:-"${BASE_DIR}/export-image"}")
-if [ ! -d "${EXPORT_CONFIG_DIR}" ]; then
-	echo "EXPORT_CONFIG_DIR invalid: ${EXPORT_CONFIG_DIR} does not exist"
-	exit 1
-fi
-export EXPORT_CONFIG_DIR
-
-for STAGE_DIR in $STAGE_LIST; do
-	STAGE_DIR=$(realpath "${STAGE_DIR}")
-	run_stage
-done
-
-CLEAN=1
-for EXPORT_DIR in ${EXPORT_DIRS}; do
-	STAGE_DIR=${EXPORT_CONFIG_DIR}
-	# shellcheck source=/dev/null
-	source "${EXPORT_DIR}/EXPORT_IMAGE"
-	EXPORT_ROOTFS_DIR=${WORK_DIR}/$(basename "${EXPORT_DIR}")/rootfs
-	run_stage
-	if [ "${USE_QEMU}" != "1" ]; then
-		if [ -e "${EXPORT_DIR}/EXPORT_NOOBS" ]; then
-			# shellcheck source=/dev/null
-			source "${EXPORT_DIR}/EXPORT_NOOBS"
-			STAGE_DIR="${BASE_DIR}/export-noobs"
-			run_stage
-		fi
+# Run our minimal stages in order
+for STAGE_NAME in stage0 stage1 stage2; do
+	STAGE_DIR="${BASE_DIR}/${STAGE_NAME}"
+	if [ -d "${STAGE_DIR}" ]; then
+		run_stage
 	fi
 done
 
-if [ -x "${BASE_DIR}/postrun.sh" ]; then
-	log "Begin postrun.sh"
-	cd "${BASE_DIR}"
-	./postrun.sh
-	log "End postrun.sh"
-fi
+# Run export
+EXPORT_DIR="${BASE_DIR}/export-image"
+STAGE_DIR="${EXPORT_DIR}"
+EXPORT_ROOTFS_DIR=${WORK_DIR}/stage2/rootfs
+run_stage
 
 log "End ${BASE_DIR}"
