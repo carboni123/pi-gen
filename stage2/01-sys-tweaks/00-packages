@@ -1,16 +1,4 @@
 ssh sudo
-console-setup keyboard-configuration
 ca-certificates curl
-usbutils
-dosfstools
 raspberrypi-sys-mods
-apt-listchanges
 rsync
-htop
-man-db
-ethtool
-pciutils
-rpi-eeprom
-raspi-utils
-unzip zip
-file

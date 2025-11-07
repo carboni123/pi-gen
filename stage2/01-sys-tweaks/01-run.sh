@@ -28,12 +28,10 @@ fi
 
 
 on_chroot <<- EOF
-	systemctl enable rpi-resize
-
-	for GRP in input spi i2c gpio; do
+	for GRP in input; do
 		groupadd -f -r "\$GRP"
 	done
-	for GRP in adm dialout cdrom audio users sudo video games plugdev input gpio spi i2c netdev render; do
+	for GRP in adm dialout sudo netdev; do
 		adduser $FIRST_USER_NAME \$GRP
 	done
 EOF
@@ -57,7 +55,3 @@ sed -i "s/PLACEHOLDER//" "${ROOTFS_DIR}/etc/default/keyboard"
 on_chroot << EOF
 DEBIAN_FRONTEND=noninteractive dpkg-reconfigure keyboard-configuration console-setup
 EOF
-
-if [ -e "${ROOTFS_DIR}/etc/avahi/avahi-daemon.conf" ]; then
-  sed -i 's/^#\?publish-workstation=.*/publish-workstation=yes/' "${ROOTFS_DIR}/etc/avahi/avahi-daemon.conf"
-fi
