@@ -1,6 +1,6 @@
-# Minimal Raspberry Pi OS Image Builder
+# Minimal Raspberry Pi 5 ARM64 OS Image Builder
 
-This is a customized pi-gen fork that builds a minimal, secure Raspberry Pi OS image for headless deployment.
+This is a customized pi-gen fork that builds a minimal, secure Raspberry Pi OS image optimized for Raspberry Pi 5 (ARM64) headless deployment.
 
 ## What It Does
 - Creates a bootable Raspberry Pi OS image with only essential components

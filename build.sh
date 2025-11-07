@@ -236,6 +236,16 @@ if [[ "$DISABLE_FIRST_BOOT_USER_RENAME" == "1" ]] && [ -z "${FIRST_USER_PASS}" ]
 	exit 1
 fi
 
+# Pi 5 ARM64 check
+echo "Checking ARM64 executable support..."
+if ! arch-test -n "arm64"; then
+	echo "WARNING: Only ARM64 environment supported. Checking emulated support..."
+	if ! arch-test "arm64"; then
+		echo "No ARM64 support found. Ensure your system supports ARM64 execution."
+		exit 1
+	fi
+fi
+
 log "Begin ${BASE_DIR}"
 
 # Run our minimal stages in order
